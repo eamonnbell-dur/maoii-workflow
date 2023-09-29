@@ -123,9 +123,9 @@ rule train_embeddings:
     output:
         checkpoint="output/checkpoints/latest.ckpt",
     params:
-        max_epochs=500,
+        max_epochs=200,
         precision=16,
-        batch_size=256,
+        batch_size=2048,
     shell:
         "python maoii-backend/scripts/simmim.py "
         "--max-epochs {params.max_epochs} --precision {params.precision} "
@@ -145,8 +145,8 @@ rule infer_embeddings:
     output:
         embeddings_path="output/embeddings/embeddings.csv"
     params:
-        pca_n_dims=64,
-        batch_size=128,
+        pca_n_dims=128,
+        batch_size=256,
     shell:
         "python maoii-backend/scripts/simmim_infer.py "
         "--input-folder output/content_crop --checkpoint {input.checkpoint} "
