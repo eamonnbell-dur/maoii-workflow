@@ -19,7 +19,6 @@ SAMPLES = list(glob_wildcards("input/{itemid}.jpg").itemid)
 #                 regionid=glob_wildcards(os.path.join(masks_directory, "{itemid}/{regionid}.png")).regionid)
 #     return vals
 
-
 # rule agg_masks:
 #     input:
 #         agg_masks_input
@@ -43,7 +42,9 @@ SAMPLES = list(glob_wildcards("input/{itemid}.jpg").itemid)
 rule all:
     input:
         "output/metadata/all_metadata.json",
-        "output/embeddings/embeddings.json"
+        "output/embeddings/embeddings.json",
+        "output/merged/merged.jsonl",
+        metadata_paths=expand("output/rle_masks/{itemid}.json", itemid=SAMPLES)
 
 rule get_sam_model:
     input:
@@ -67,9 +68,23 @@ rule create_masks:
         metadata_paths=expand("output/masks/{itemid}/metadata.csv", itemid=SAMPLES)
     shell:
         "python maoii-backend/scripts/amg.py --input-filenames {input.input_filenames} "
-        "--output output/masks --content-output output/content_crop "
+        "--output {output.masks_directory} --content-output {output.content_directory} "
         "--checkpoint {input.model_path} --model-type vit_h"
 
+rule create_rle_masks:
+    # set --resources gpu_workers=1 in CLI invocation of runner to 
+    # prevent out-of-memory on GPU (forces serial execution of this step)    
+    input:
+        input_filenames=expand("input/{itemid}.jpg", itemid=SAMPLES),
+        model_path="models/sam_vit_h_4b8939.pth"
+    resources:
+        gpu_workers=1
+    output:
+        metadata_paths=expand("output/rle_masks/{itemid}.json", itemid=SAMPLES)
+    shell:
+        "python maoii-backend/scripts/amg.py --input-filenames {input.input_filenames} "
+        "--convert-to-rle --output output/rle_masks "
+        "--checkpoint {input.model_path} --model-type vit_h"
 
 rule agg_masklists:
     input:
@@ -90,28 +105,64 @@ rule json_metadata:
         "| jq -c '.[].filename = \"{wildcards.itemid}\"' "
         "> {output.json_path}"
 
-rule json_all_metadata:
+rule jsonl_embeddings:
+    input:
+        "output/embeddings/embeddings.csv"
+    output:
+        "output/embeddings/embeddings.jsonl"
+    shell:
+        "jq -cR 'split(\",\")' {input} "
+        "| jq -csf maoii-backend/scripts/j2c.jq "
+        "| jq -c '.[] | {{\"filenames\":.filenames, \"embeddings\":([. | to_entries[] | select(.key | contains(\"embedding\")) | .value])}}' "
+        "> {output}"
+
+rule jsonl_all_metadata:
     input:
         expand("output/metadata/{itemid}.json", itemid=SAMPLES)
     output:
-        "output/metadata/all_metadata.json"
+        "output/metadata/all_metadata.jsonl"
     shell:
         "cat {input} "
         "| jq -c .[] "
-        "| jq -sc .  "
+        "> {output}"
+
+rule json_all_metadata:
+    input:
+        "output/metadata/all_metadata.jsonl"
+    output:
+        "output/metadata/all_metadata.json"
+    shell:
+        "jq -cs '.' {input} "
         "> {output}"
 
 rule json_embeddings:
     input:
-        "output/embeddings/embeddings.csv"
+        "output/embeddings/embeddings.jsonl"
     output:
         "output/embeddings/embeddings.json"
     shell:
-        "jq -cR 'split(\",\")' {input} "
-        "| jq -csf maoii-backend/scripts/j2c.jq "
-        "| jq -c '.[]' "
-        "| jq -c '{{\"filenames\":.filenames, \"embeddings\":([. | to_entries[] | select(.key | contains(\"embedding\")) | .value])}}' "
-        "| jq -sc '.' > {output}"
+        "jq -cs '.' {input} "
+        "> {output}"
+
+rule json_merged:
+    input:
+        embeddings="output/embeddings/embeddings.json",
+        all_metadata="output/metadata/all_metadata.json"
+    output:
+        "output/merged/merged.json"
+    shell:
+        "python maoii-backend/scripts/merge_json.py "
+        "--embeddings-path {input.embeddings} "
+        "--metadata-path {input.all_metadata} "
+        "--merged-path {output} "
+
+rule jsonl_merged:
+    input:
+        "output/merged/merged.json"
+    output:
+        "output/merged/merged.jsonl"
+    shell:
+        "jq -c .[] {input} > {output}"
 
 rule train_embeddings:
     resources:
@@ -123,9 +174,9 @@ rule train_embeddings:
     output:
         checkpoint="output/checkpoints/latest.ckpt",
     params:
-        max_epochs=200,
+        max_epochs=500,
         precision=16,
-        batch_size=2048,
+        batch_size=256,
     shell:
         "python maoii-backend/scripts/simmim.py "
         "--max-epochs {params.max_epochs} --precision {params.precision} "
@@ -146,7 +197,7 @@ rule infer_embeddings:
         embeddings_path="output/embeddings/embeddings.csv"
     params:
         pca_n_dims=128,
-        batch_size=256,
+        batch_size=128,
     shell:
         "python maoii-backend/scripts/simmim_infer.py "
         "--input-folder output/content_crop --checkpoint {input.checkpoint} "
