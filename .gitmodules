@@ -1,0 +1,6 @@
+[submodule "maoii-backend"]
+	path = maoii-backend
+	url = https://github.com/bell-group-durham/maoii-backend
+[submodule "maoii-frontend"]
+	path = maoii-frontend
+	url = https://github.com/bell-group-durham/maoii-frontend
