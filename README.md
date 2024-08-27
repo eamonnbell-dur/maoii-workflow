@@ -4,7 +4,7 @@ Workflow for massive analysis of internet images
 
 ## Installing
 
-1. Create a Python virtualenv
+1. Create a Python 3.10 virtualenv (not tested with other versions)
 2. Clone this repository (e.g. `gh repo clone eamonnbell-dur/maoii-workflow`)
 3. Initialize and update submodules, if not already done (e.g. `git submodule update --init --recursive`)
 4. Install backend dependencies into the Python virtualenv using `maoii-backend/requirements.txt`
