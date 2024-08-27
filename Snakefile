@@ -74,8 +74,8 @@ rule get_sam2_config:
 # this is the easiest way to dynamically select the correct "create_masks rule"
 # other ways involve renaming files or using checkpoints
 if config.get("sam_type", None) == "sam":
-    ruleorder: create_masks_fastsam > create_masks_sam2 > create_masks_sam
-if config.get("sam_type", None) == "sam2":
+    ruleorder: create_masks_sam > create_masks_sam2 > create_masks_fastsam
+elif config.get("sam_type", None) == "sam2":
     ruleorder: create_masks_sam2 > create_masks_sam > create_masks_fastsam
 else:
     ruleorder: create_masks_fastsam > create_masks_sam2 > create_masks_sam
