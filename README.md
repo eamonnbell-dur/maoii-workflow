@@ -6,10 +6,11 @@ Workflow for massive analysis of internet images
 
 1. Create a Python virtualenv
 2. Clone this repository (e.g. `gh repo clone eamonnbell-dur/maoii-workflow`)
-3. Install backend dependencies into the Python virtualenv using `maoii-backend/requirements.txt`
-4. Install frontend dependencies in `maoii-frontend/package.json`, using `npm` or similar (e.g. `yarn`)
-5. Build the frontend using `webpack`
-6. Install `jq`
+3. Initialize and update submodules, if not already done (e.g. `git submodule update --init --recursive`)
+4. Install backend dependencies into the Python virtualenv using `maoii-backend/requirements.txt`
+5. Install frontend dependencies in `maoii-frontend/package.json`, using `npm` or similar (e.g. `yarn`)
+6. Build the frontend using `webpack`
+7. Install `jq`
 
 ## Using 
 
