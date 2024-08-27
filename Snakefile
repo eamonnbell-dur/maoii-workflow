@@ -44,7 +44,8 @@ rule all:
         "output/metadata/all_metadata.json",
         "output/embeddings/embeddings.json",
         "output/merged/merged.jsonl",
-        metadata_paths=expand("output/rle_masks/{itemid}.json", itemid=SAMPLES)
+        #metadata_paths=expand("output/rle_masks/{itemid}.json", itemid=SAMPLES)
+
 
 rule get_sam_model:
     input:
@@ -54,7 +55,32 @@ rule get_sam_model:
     run:
         shell("mv {input} {output}")
 
-rule create_masks:
+rule get_sam2_model:
+    input:
+        HTTP.remote("https://dl.fbaipublicfiles.com/segment_anything_2/072824/sam2_hiera_base_plus.pt", keep_local=True)
+    output:
+        "models/sam2_hiera_base_plus.pt"
+    run:
+        shell("mv {input} {output}")
+
+rule get_sam2_config:
+    input:
+        HTTP.remote("https://raw.githubusercontent.com/facebookresearch/segment-anything-2/main/sam2_configs/sam2_hiera_b%2B.yaml", keep_local=True)
+    output:
+        "models/sam2_hiera_b+.yaml"
+    run:
+        shell("mv {input} {output}")
+
+# this is the easiest way to dynamically select the correct "create_masks rule"
+# other ways involve renaming files or using checkpoints
+if config.get("sam_type", None) == "sam":
+    ruleorder: create_masks_fastsam > create_masks_sam2 > create_masks_sam
+if config.get("sam_type", None) == "sam2":
+    ruleorder: create_masks_sam2 > create_masks_sam > create_masks_fastsam
+else:
+    ruleorder: create_masks_fastsam > create_masks_sam2 > create_masks_sam
+
+rule create_masks_sam:
     # set --resources gpu_workers=1 in CLI invocation of runner to 
     # prevent out-of-memory on GPU (forces serial execution of this step)    
     input:
@@ -69,22 +95,56 @@ rule create_masks:
     shell:
         "python maoii-backend/scripts/amg.py --input-filenames {input.input_filenames} "
         "--output {output.masks_directory} --content-output {output.content_directory} "
-        "--checkpoint {input.model_path} --model-type vit_h"
+        "--sam-type sam --checkpoint {input.model_path} --model-type vit_h"
 
-rule create_rle_masks:
+rule create_masks_sam2:
     # set --resources gpu_workers=1 in CLI invocation of runner to 
     # prevent out-of-memory on GPU (forces serial execution of this step)    
     input:
         input_filenames=expand("input/{itemid}.jpg", itemid=SAMPLES),
-        model_path="models/sam_vit_h_4b8939.pth"
+        model_path="models/sam2_hiera_base_plus.pt",
+        model_config_path="models/sam2_hiera_b+.yaml",
     resources:
         gpu_workers=1
     output:
-        metadata_paths=expand("output/rle_masks/{itemid}.json", itemid=SAMPLES)
+        masks_directory=directory("output/masks/"),
+        content_directory=directory("output/content_crop/"),
+        metadata_paths=expand("output/masks/{itemid}/metadata.csv", itemid=SAMPLES)
     shell:
         "python maoii-backend/scripts/amg.py --input-filenames {input.input_filenames} "
-        "--convert-to-rle --output output/rle_masks "
-        "--checkpoint {input.model_path} --model-type vit_h"
+        "--output {output.masks_directory} --content-output {output.content_directory} "
+        "--sam-type sam2 --checkpoint {input.model_path} --sam2-config {input.model_config_path}"
+
+rule create_masks_fastsam:
+    # set --resources gpu_workers=1 in CLI invocation of runner to 
+    # prevent out-of-memory on GPU (forces serial execution of this step)    
+    input:
+        input_filenames=expand("input/{itemid}.jpg", itemid=SAMPLES),
+    resources:
+        gpu_workers=1
+    output:
+        masks_directory=directory("output/masks/"),
+        content_directory=directory("output/content_crop/"),
+        metadata_paths=expand("output/masks/{itemid}/metadata.csv", itemid=SAMPLES)
+    shell:
+        "python maoii-backend/scripts/amg.py --input-filenames {input.input_filenames} "
+        "--output {output.masks_directory} --content-output {output.content_directory} "
+        "--sam-type fastsam --checkpoint dummy "
+
+# rule create_rle_masks:
+#     # set --resources gpu_workers=1 in CLI invocation of runner to 
+#     # prevent out-of-memory on GPU (forces serial execution of this step)    
+#     input:
+#         input_filenames=expand("input/{itemid}.jpg", itemid=SAMPLES),
+#         model_path="models/sam_vit_h_4b8939.pth"
+#     resources:
+#         gpu_workers=1
+#     output:
+#         metadata_paths=expand("output/rle_masks/{itemid}.json", itemid=SAMPLES)
+#     shell:
+#         "python maoii-backend/scripts/amg.py --input-filenames {input.input_filenames} "
+#         "--convert-to-rle --output output/rle_masks "
+#         "--checkpoint {input.model_path} --model-type vit_h"
 
 rule agg_masklists:
     input:
@@ -174,7 +234,7 @@ rule train_embeddings:
     output:
         checkpoint="output/checkpoints/latest.ckpt",
     params:
-        max_epochs=500,
+        max_epochs=10,
         precision=16,
         batch_size=256,
     shell:
