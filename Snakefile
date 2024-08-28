@@ -67,9 +67,11 @@ rule get_sam2_config:
     input:
         HTTP.remote("https://raw.githubusercontent.com/facebookresearch/segment-anything-2/main/sam2_configs/sam2_hiera_b%2B.yaml", keep_local=True)
     output:
-        "models/sam2_hiera_b+.yaml"
+        sam2_config="sam2_configs/sam2_hiera_b+.yaml",
+        init="sam2_configs/__init__.py"
     run:
-        shell("mv {input} {output}")
+        shell("mv {input} {output.sam2_config}")
+        shell("touch {output.init}")
 
 # this is the easiest way to dynamically select the correct "create_masks rule"
 # other ways involve renaming files or using checkpoints
@@ -103,7 +105,8 @@ rule create_masks_sam2:
     input:
         input_filenames=expand("input/{itemid}.jpg", itemid=SAMPLES),
         model_path="models/sam2_hiera_base_plus.pt",
-        model_config_path="models/sam2_hiera_b+.yaml",
+        model_config="sam2_configs/sam2_hiera_b+.yaml",
+        init="sam2_configs/__init__.py",
     resources:
         gpu_workers=1
     output:
@@ -113,7 +116,7 @@ rule create_masks_sam2:
     shell:
         "python maoii-backend/scripts/amg.py --input-filenames {input.input_filenames} "
         "--output {output.masks_directory} --content-output {output.content_directory} "
-        "--sam-type sam2 --checkpoint {input.model_path} --sam2-config {input.model_config_path}"
+        "--sam-type sam2 --checkpoint {input.model_path} --sam2-config {input.model_config}"
 
 rule create_masks_fastsam:
     # set --resources gpu_workers=1 in CLI invocation of runner to 
